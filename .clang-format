@@ -1,0 +1,43 @@
+﻿---
+#本节所有设置在https://clang.llvm.org/docs/ClangFormatStyleOptions.html查询具体定义
+#全局选项
+  Language: Cpp
+  Standard: c++20
+  BasedOnStyle: Google
+  BreakBeforeBraces: Attach #使用attach的括号换行风格
+
+#缩进、空格相关
+  AccessModifierOffset: -2 #访问限制词（如public）后面的缩进
+  ContinuationIndentWidth: 2 #长表达式换行缩进
+  IndentWidth: 4 #行缩进为4个空格
+  TabWidth: 4 #tab替换为为4个空格
+  IndentCaseLabels: true #case标签需要缩进
+  IndentPPDirectives: AfterHash #预编译指令采用#前置的缩进
+  NamespaceIndentation: All #namespace括号里的均需要缩进（内部有namespace则继续缩进）
+
+  SpaceBeforeCaseColon: false #case标识符的冒号前不加空格
+  SpaceBeforeCpp11BracedList: false #新建类初始化的参数列表前不加空格
+  SpaceBeforeCtorInitializerColon: false #类初始化的参数列表前不加空格
+  SpaceBeforeParens: Never #小括号前不加空格
+  SpaceBeforeRangeBasedForLoopColon: false #遍历列表形式的for循环小括号前不加空格
+  SpacesInLineCommentPrefix:
+    Maximum: 1
+    Minimum: 1 # //型注释前强制限定为至少添加一个空格 //comment -> // comment
+
+#对齐、换行相关
+  AlignArrayOfStructures: Left #设置初始化数组的方阵为左对齐
+  AlignTrailingComments: true #对齐所有尾注释
+  AllowShortFunctionsOnASingleLine: InlineOnly #只允许内联函数写在一行中
+  AlwaysBreakTemplateDeclarations: 'No' # 不强制模板函数换行
+
+#代码风格相关
+  BinPackArguments: true #允许在不同行写任意数目的函数参数
+  PackConstructorInitializers: BinPack #允许在不同行写任意数目的类默认参数
+  #start using after the LLVM15.0 is open.  InsertBraces: true #设置每个控制语句后必须用{}包裹，即使只有一行。
+  EmptyLineAfterAccessModifier: Never #访问限制符后面不加空行
+  EmptyLineBeforeAccessModifier: Always #访问限制符前强制加空行
+  IncludeBlocks: Regroup #对include文件进行重新分组
+  DerivePointerAlignment: false #关闭根据int* 和int *的数量自动推导
+  PointerAlignment: Left #强制使用int*类型的指针声明
+  ReferenceAlignment: Pointer #强制使用int&类型的引用声明
+  ColumnLimit: 256 #每行长度限制

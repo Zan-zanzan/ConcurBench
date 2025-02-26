@@ -42,6 +42,7 @@ int main() {
 
     writer.total_ = static_cast<int>(test_names.size());
 
+    auto start_time = std::chrono::steady_clock::now();
     // 提交任务
     for(auto const& name: test_names) {
         executor.SubmitTest(name);
@@ -52,8 +53,10 @@ int main() {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         writer.PrintProgress();
     }
-
+    auto total_time = std::chrono::steady_clock::now() - start_time;
+    auto seconds_float = std::chrono::duration<double>(total_time).count();
     std::cout << "\nAll tests completed!\n";
+    std::cout << "总耗时：" << seconds_float << "秒";
 
     return 0;
 }

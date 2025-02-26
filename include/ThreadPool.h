@@ -27,17 +27,14 @@ class ThreadPool {
      * @tparam Args 参数包类型
      * @return 与任务结果关联的std::future
      */
-    template <class F, class... Args> auto enqueue(F&& f, Args&&... args) -> std::future<typename std::invoke_result<F(Args...)>::type> {  // 使用typename明确告诉编译器::type是类型
+    template <class F, class... Args> auto enqueue(F&& f, Args&&... args) -> std::future<typename std::invoke_result<F, Args...>::type> {  // 使用typename明确告诉编译器::type是类型
         // 推导任务返回类型
-        using return_type = typename std::invoke_result<F(Args...)>::type;
+        using return_type = typename std::invoke_result<F, Args...>::type;
         // 创建packaged_task来包装任务，用于获取future
         // 使用shared_ptr来实现堆任务对象的共享所有权
-        auto task = std::make_shared<std::packaged_task<return_type()>>(
-          // 使用bind完美转发参数
-          // 将函数 f 与参数 args... 绑定，从而生成了一个新的无参数可调用对象
-          std::bind(std::forward<F>(f), std::forward<Args>(args)...));
+        auto task = std::make_shared<std::packaged_task<return_type()>>([func = std::forward<F>(f), captured_args = std::make_tuple(std::forward<Args>(args)...)]() { return std::apply(func, captured_args); });
 
-        // 获取与任务关联的future对象
+        // 获取与任务关联的future对象，仅仅创建关联，并不会触发可调用对象的执行
         std::future<return_type> res = task->get_future();
         {
             // 临界区开始
@@ -53,7 +50,7 @@ class ThreadPool {
 
         // 通知一个线程有新任务到来
         condition.notify_one();
-        return res;  // 返回future对象
+        return res;  // 返回future对象，同样的没有执行
     }
 
     /**

@@ -19,6 +19,9 @@ endif()
 set(SOURCES
     main.cpp
     src/ThreadPool.cpp
+    src/ConcurrentResultWriter.cpp
+    src/TestExecutor.cpp
+    src/TestPreprocess.cpp
 )
 
 add_executable(ConcurBench ${SOURCES})

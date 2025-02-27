@@ -20,7 +20,7 @@ TestExecutor::TestExecutor(ThreadPool& pool, std::string const& exe_path, Concur
  */
 void TestExecutor::SubmitTest(std::string const& test_name) {
     pool_.enqueue([this, test_name]() -> void {
-        TestTesult result;
+        TestResult result;
         result.name = test_name;
         auto cmd = BuildCommand(test_name);
         auto [exit_code, output] = ExecuteTest(cmd);
@@ -29,8 +29,20 @@ void TestExecutor::SubmitTest(std::string const& test_name) {
         result.output = output;
 
         writer_.completed_++;
-        // writer_.AddResult(result);
-        // writer_.PrintProgress();
+    });
+}
+
+/**
+ * @brief 向进程池提交一组测例，交由一个线程执行
+ *
+ * @param test_names
+ */
+void TestExecutor::SubmitTestBatch(std::vector<std::string> const& test_names) {
+    pool_.enqueue([this, test_names] {
+        auto cmd = BuildCommand(test_names);
+        auto [exit_code, output] = ExecuteTest(cmd);
+        writer_.completed_ += static_cast<int>(test_names.size());
+        writer_.AddResult(output);
     });
 }
 
@@ -42,6 +54,12 @@ void TestExecutor::SubmitTest(std::string const& test_name) {
  */
 std::string TestExecutor::BuildCommand(std::string const& test_name) {
     return exe_path_ + " --gtest_filter=" + test_name;
+}
+
+std::string TestExecutor::BuildCommand(std::vector<std::string> const& test_names) {
+    std::string filter;
+    for(auto& test_name: test_names) filter = filter + test_name + ":";
+    return exe_path_ + " --gtest_filter=" + filter;
 }
 
 /**

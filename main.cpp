@@ -5,16 +5,20 @@
 #include "TestExecutor.h"
 #include "TestPreprocess.h"
 #include "ThreadPool.h"
-
-// IntersectorCoroutineBatchTests* : IntersectorGeometryCoroutineBatchTests* : Intersector_SliceGeneratorBatchTests*:
-// Spd_IntersectorSpdPrimtiveGeneratorBatchTests* : IntersectorSpdModelGeneratorBatchTests* : IntersectorSpdBoatGeneratorBatchTests*
-
+// 耦合版本
+// IntersectorCoroutineBatchTests*:IntersectorGeometryCoroutineBatchTests*:Intersector_SliceGeneratorBatchTests*:
+// Spd_IntersectorSpdPrimtiveGeneratorBatchTests*:IntersectorSpdModelGeneratorBatchTests*:IntersectorSpdBoatGeneratorBatchTests*
+// 独立版本
+// IntersectorCoroutineBatchTests*:IntersectorGeometryCoroutineBatchTests*:IntersectorSliceGeneratorBatchTests*:IntersectorSpdPrimtiveGeneratorBatchTests*:IntersectorSpdModelGeneratorBatchTests*:IntersectorSpdBoatGeneratorBatchTests*
 int main() {
+    // 1. 可执行文件路径
     std::string exe_path = "D:/GithubProject/GME-Test/GME-Build/Release/tests_acis.exe";
+    // 2. gtest_filter
     std::string gtest_filter =
       "IntersectorCoroutineBatchTests*:IntersectorGeometryCoroutineBatchTests*:Intersector_SliceGeneratorBatchTests*:Spd_IntersectorSpdPrimtiveGeneratorBatchTests*:IntersectorSpdModelGeneratorBatchTests*:IntersectorSpdBoatGeneratorBatchTests*";
-    int thread_num = std::thread::hardware_concurrency();
+    // 3. 超时上限
     int time_out_sec = 30;
+    int thread_num = std::thread::hardware_concurrency();
 
     std::filesystem::path parent_dir = std::filesystem::path(exe_path).parent_path();
     std::filesystem::path out_path = parent_dir / "output";
@@ -43,9 +47,15 @@ int main() {
     writer.total_ = static_cast<int>(test_names.size());
 
     auto start_time = std::chrono::steady_clock::now();
-    // 提交任务
-    for(auto const& name: test_names) {
-        executor.SubmitTest(name);
+    // 提交任务, 一组M个
+    const int M = static_cast<int>(test_names.size()) / thread_num / 10;
+    std::vector<std::string> batch;
+    for(int i = 0; i < test_names.size(); i++) {
+        batch.push_back(test_names[i]);
+        if(i && i % M == 0 || i == test_names.size() - 1) {
+            executor.SubmitTestBatch(batch);
+            batch.clear();
+        }
     }
 
     // 等待任务完成

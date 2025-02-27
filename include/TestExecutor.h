@@ -25,12 +25,21 @@ class TestExecutor {
     void SubmitTest(std::string const& test_name);
 
     /**
+     * @brief 向进程池提交一组测例，交由一个线程执行
+     *
+     * @param test_names
+     */
+    void SubmitTestBatch(std::vector<std::string> const& test_names);
+
+    /**
      * @brief 生成command
      *
      * @param test_name
      * @return std::string
      */
     std::string BuildCommand(std::string const& test_name);
+
+    std::string BuildCommand(std::vector<std::string> const& test_names);
 
     /**
      * @brief 执行任务

@@ -1,5 +1,7 @@
 #include "ConcurrentResultWriter.h"
 
+#include "TestExecutor.h"
+
 /**
  * @brief Construct a new Concurrent Result Writer object
  *
@@ -8,15 +10,12 @@
 ConcurrentResultWriter::ConcurrentResultWriter(std::string const& file_name): outfile_(file_name, std::ios::app), completed_(false) {
 }
 
-/**
- * @brief 输出结果
- *
- * @param result
- */
-void ConcurrentResultWriter::AddResult(TestResult const& result) {
+void ConcurrentResultWriter::AddResult(ExecuteResult const& result) {
     std::lock_guard<std::mutex> lock(mtx_);
-    outfile_ << result.name << " : " << result.status << "\n";
-    outfile_.flush();
+    for(auto const& res: result.complete_tests) outfile_ << res.first << " : " << res.second << "\n";
+    for(auto const& res: result.skipped_tests) outfile_ << res << " : Skipped\n";
+    for(auto const& res: result.timed_out_tests) outfile_ << res << " : Timed_out\n";
+    for(auto const& res: result.interrupted_tests) outfile_ << res << " : Interrupted\n";
 }
 
 void ConcurrentResultWriter::AddResult(std::string const& result) {

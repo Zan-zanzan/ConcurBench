@@ -7,6 +7,8 @@
 #include <sstream>
 #include <vector>
 
+struct ExecuteResult;
+
 struct TestResult {
     std::string name;
     std::string status;
@@ -27,9 +29,10 @@ class ConcurrentResultWriter {
      *
      * @param result
      */
-    void AddResult(TestResult const& result);
 
     void AddResult(std::string const& result);
+
+    void AddResult(ExecuteResult const& result);
 
     /**
      * @brief 打印进度状态

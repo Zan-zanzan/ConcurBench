@@ -12,10 +12,10 @@
 // IntersectorCoroutineBatchTests*:IntersectorGeometryCoroutineBatchTests*:IntersectorSliceGeneratorBatchTests*:IntersectorSpdPrimtiveGeneratorBatchTests*:IntersectorSpdModelGeneratorBatchTests*:IntersectorSpdBoatGeneratorBatchTests*
 int main() {
     // 1. 可执行文件路径
-    std::string exe_path = "D:/GithubProject/GME-Test/GME-Build/Release/tests_acis.exe";
+    std::string exe_path = "D:/GithubProject/GME-Test/GME-Build/Release/tests.exe";
     // 2. gtest_filter
     std::string gtest_filter =
-      "IntersectorCoroutineBatchTests*:IntersectorGeometryCoroutineBatchTests*:Intersector_SliceGeneratorBatchTests*:Spd_IntersectorSpdPrimtiveGeneratorBatchTests*:IntersectorSpdModelGeneratorBatchTests*:IntersectorSpdBoatGeneratorBatchTests*";
+      "IntersectorCoroutineBatchTests*:IntersectorGeometryCoroutineBatchTests*:IntersectorSliceGeneratorBatchTests*:IntersectorSpdPrimtiveGeneratorBatchTests*:IntersectorSpdModelGeneratorBatchTests*:IntersectorSpdBoatGeneratorBatchTests*";
     // 3. 超时上限
     int time_out_sec = 30;
     int thread_num = std::thread::hardware_concurrency();

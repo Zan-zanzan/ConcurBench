@@ -2,6 +2,8 @@
 
 #include <WTypesbase.h>
 
+#include "ConcurrentResultWriter.h"
+
 /**
  * @brief Construct a new Test Executor object
  *
@@ -14,51 +16,33 @@ TestExecutor::TestExecutor(ThreadPool& pool, std::string const& exe_path, Concur
 }
 
 /**
- * @brief 向进程池提交任务
- *
- * @param test_name
- */
-void TestExecutor::SubmitTest(std::string const& test_name) {
-    pool_.enqueue([this, test_name]() -> void {
-        TestResult result;
-        result.name = test_name;
-        auto cmd = BuildCommand(test_name);
-        auto [exit_code, output] = ExecuteTest(cmd);
-
-        result.status = (exit_code == 0) ? "Passed" : "Failed";
-        result.output = output;
-
-        writer_.completed_++;
-    });
-}
-
-/**
  * @brief 向进程池提交一组测例，交由一个线程执行
  *
  * @param test_names
  */
 void TestExecutor::SubmitTestBatch(std::vector<std::string> const& test_names) {
+    // std::cout << "Submitting batch of " << test_names.size() << " tests\n";
     pool_.enqueue([this, test_names] {
         auto cmd = BuildCommand(test_names);
-        auto [exit_code, output] = ExecuteTest(cmd);
-        writer_.completed_ += static_cast<int>(test_names.size());
-        writer_.AddResult(output);
-    });
-}
+        auto result = ExecuteTest(cmd, test_names);
 
-/**
- * @brief 生成command
- *
- * @param test_name
- * @return std::string
- */
-std::string TestExecutor::BuildCommand(std::string const& test_name) {
-    return exe_path_ + " --gtest_filter=" + test_name;
+        // 处理完成, 超时, 中断的测例
+        writer_.completed_ += static_cast<int>(result.complete_tests.size() + result.timed_out_tests.size() + result.skipped_tests.size() + result.interrupted_tests.size());
+        writer_.AddResult(result);
+
+        // 记录处理结果
+        // std::cout << "Batch completed. Complete: " << result.complete_tests.size() << "Skipped: " << result.skipped_tests.size() << ", Timed out: " << result.timed_out_tests.size() << ", Interrupted: " << result.interrupted_tests.size()
+        //           << ", Remaining: " << result.remaining_tests.size() << std::endl;
+        // 重新提交剩余测例
+        if(!result.remaining_tests.empty()) {
+            SubmitTestBatch(result.remaining_tests);
+        }
+    });
 }
 
 std::string TestExecutor::BuildCommand(std::vector<std::string> const& test_names) {
     std::string filter;
-    for(auto& test_name: test_names) filter = filter + test_name + ":";
+    for(auto& test_name: test_names) filter += test_name + ":";
     return exe_path_ + " --gtest_filter=" + filter;
 }
 
@@ -68,7 +52,7 @@ std::string TestExecutor::BuildCommand(std::vector<std::string> const& test_name
  * @param command
  * @return std::pair<int, std::string>
  */
-std::pair<int, std::string> TestExecutor::ExecuteTest(std::string const& command) {
+ExecuteResult TestExecutor::ExecuteTest(std::string const& command, std::vector<std::string> const& test_names) {
     SECURITY_ATTRIBUTES sa;             // 定义对象 (如管道，文件，句柄) 的安全属性和继承属性
     sa.nLength = sizeof(sa);            // 必须显示这样设置
     sa.bInheritHandle = true;           // 表示子句柄可以被继承
@@ -98,48 +82,107 @@ std::pair<int, std::string> TestExecutor::ExecuteTest(std::string const& command
     );
 
     if(!sucess) {
+        CloseHandle(hOutputRead);
         throw std::runtime_error("CreateProcess failed");
     }
 
     CloseHandle(hOutputWrite);  // 父进程无需写端，立即关闭
 
+    std::vector<std::string> remaining_tests = test_names;
+    std::vector<std::pair<std::string, std::string>> completed_tests;
+    std::vector<std::string> skipped_tests;
+    std::vector<std::string> timed_out_tests;
+    std::vector<std::string> interrupted_tests;
+    std::string current_test;
+    auto start_time = std::chrono::steady_clock::now();
+
     // 异步读取输出
-    std::string output;
     char buffer[4096];
     DWORD bytesRead;  // 保存ReadFile实际读取的字节数
+    std::string output;
+    bool process_exited = false;
 
-    auto start = std::chrono::steady_clock::now();
     while(true) {
         // 非阻塞检查子进程是否已经退出
-        if(WaitForSingleObject(pi.hProcess, 0) == WAIT_OBJECT_0) break;
-
-        // 超时处理
-        auto elapsed = std::chrono::steady_clock::now() - start;
-        if(elapsed > std::chrono::seconds(time_out_)) {
-            TerminateProcess(pi.hProcess, 1);
-            throw std::runtime_error("Test timeout");
+        DWORD exit_code;
+        if(GetExitCodeProcess(pi.hProcess, &exit_code) && exit_code != STILL_ACTIVE) {
+            process_exited = true;
+            // 检测异常退出 (非正常结束且非超时终止)
+            if(exit_code != 0 && timed_out_tests.empty()) {
+                if(!current_test.empty()) {
+                    interrupted_tests.push_back(current_test);
+                    auto it = std::find(remaining_tests.begin(), remaining_tests.end(), current_test);
+                    if(it != remaining_tests.end()) {
+                        remaining_tests.erase(it);
+                    }
+                }
+            }
         }
 
         // 非阻塞读取，首先检查管道中是否有数据可以读取
-        if(PeekNamedPipe(hOutputRead, nullptr, 0, nullptr, &bytesRead, nullptr) && bytesRead > 0) {
+        while(PeekNamedPipe(hOutputRead, nullptr, 0, nullptr, &bytesRead, nullptr) && bytesRead > 0) {
             // 从管道中读取数据
             ReadFile(hOutputRead, buffer, sizeof(buffer), &bytesRead, nullptr);
             output.append(buffer, bytesRead);
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));  // 减少cpu占用
+        // 解析输出
+        std::istringstream iss(output);
+        std::string line;
+        while(std::getline(iss, line)) {
+            if(line[line.size() - 1] == '\r') line.erase(line.size() - 1);
+            if(line.find("[ RUN      ]") != std::string::npos) {
+                current_test = line.substr(13);
+                start_time = std::chrono::steady_clock::now();
+            } else if(line.find("[       OK ]") != std::string::npos || line.find("[  FAILED  ]") != std::string::npos) {
+                if(!current_test.empty()) {
+                    auto it = std::find(remaining_tests.begin(), remaining_tests.end(), current_test);
+                    if(it != remaining_tests.end()) {
+                        completed_tests.push_back({current_test, line.find("[       OK ]") != std::string::npos ? "Passed" : "Failed"});
+                        remaining_tests.erase(it);
+                    }
+                }
+                current_test.clear();
+            } else if(line.find("[  SKIPPED ]") != std::string::npos) {
+                if(!current_test.empty()) {
+                    auto it = std::find(remaining_tests.begin(), remaining_tests.end(), current_test);
+                    if(it != remaining_tests.end()) {
+                        skipped_tests.push_back(current_test);
+                        remaining_tests.erase(it);
+                    }
+                }
+                current_test.clear();
+            }
+        }
+
+        // 检查超时
+        if(!current_test.empty()) {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
+            if(elapsed >= time_out_) {
+                TerminateProcess(pi.hProcess, 1);
+                timed_out_tests.push_back(current_test);
+                auto it = std::find(remaining_tests.begin(), remaining_tests.end(), current_test);
+                if(it != remaining_tests.end()) {
+                    remaining_tests.erase(it);
+                }
+                current_test.clear();
+                break;
+            }
+        }
+
+        if(process_exited) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // 读取剩余输出, 确保子进程退出后管道中的所有数据都被读取
-    while(ReadFile(hOutputRead, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0) {
+    // 读取剩余输出
+    while(ReadFile(hOutputRead, buffer, sizeof(buffer), &bytesRead, NULL) && bytesRead > 0) {
         output.append(buffer, bytesRead);
     }
 
-    DWORD exit_code;
-    // 获取进程退出码
-    GetExitCodeProcess(pi.hProcess, &exit_code);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
     CloseHandle(hOutputRead);
-    return {exit_code, output};
+
+    return {0, output, completed_tests, skipped_tests, timed_out_tests, remaining_tests, interrupted_tests};
 }
